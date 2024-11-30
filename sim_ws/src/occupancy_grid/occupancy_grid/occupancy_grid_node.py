@@ -28,7 +28,7 @@ class OccupancyGridNode(Node):
 
         # Set up Matplotlib visualization
         self.fig, self.ax = plt.subplots()
-        self.img = self.ax.imshow(self.occupancy_grid, cmap='gray', origin='lower', extent=[-10, 10, -10, 10])
+        self.img = self.ax.imshow(self.occupancy_grid, cmap='hot', origin='lower', vmin=-1, vmax=1, extent=[-10, 10, -10, 10])
         self.ax.set_title("Occupancy Grid with Frontiers")
         self.ax.set_xlabel("X (meters)")
         self.ax.set_ylabel("Y (meters)")
@@ -48,6 +48,10 @@ class OccupancyGridNode(Node):
         # Convert LIDAR data to Cartesian coordinates
         x_coords = ranges * np.cos(angles)
         y_coords = ranges * np.sin(angles)
+
+
+        self.get_logger().info(f"LIDAR Points: X={x_coords[:10]} Y={y_coords[:10]}")
+
 
         # Filter invalid data
         valid = (ranges > 0) & (ranges < max_range)
@@ -86,12 +90,17 @@ class OccupancyGridNode(Node):
                     neighbors = self.occupancy_grid[x-1:x+2, y-1:y+2].flatten()
                     if 0 in neighbors:
                         frontiers.append((x, y))
+        
+        self.get_logger().info(f"Detected {len(frontiers)} frontiers")
         return frontiers
 
     def update_visualization(self, _):
         """
         Update the Matplotlib visualization dynamically.
         """
+
+        self.get_logger().info(f"Grid Values (Center): {self.occupancy_grid[self.grid_center[0]-5:self.grid_center[0]+5, self.grid_center[1]-5:self.grid_center[1]+5]}")
+
         # Update the occupancy grid display
         self.img.set_data(self.occupancy_grid)
 
