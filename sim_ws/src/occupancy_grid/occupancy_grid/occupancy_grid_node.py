@@ -18,7 +18,7 @@ class OccupancyGridNode(Node):
         )
 
         # Occupancy grid parameters
-        self.grid_resolution = 0.05  # 5cm per cell
+        self.grid_resolution = 0.25  # 5cm per cell
         self.grid_size = (200, 200)  # 10m x 10m grid
         self.grid_center = (self.grid_size[0] // 2, self.grid_size[1] // 2)
         self.occupancy_grid = np.zeros(self.grid_size, dtype=np.int8)  # 0: unknown, 1: occupied, -1: free
