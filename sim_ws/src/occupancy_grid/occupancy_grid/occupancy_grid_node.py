@@ -1,12 +1,9 @@
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import LaserScan
-from nav_msgs.msg import OccupancyGrid
-from std_msgs.msg import Header
-from geometry_msgs.msg import Point
-from visualization_msgs.msg import Marker
 import numpy as np
-
+import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
 
 class OccupancyGridNode(Node):
     def __init__(self):
@@ -15,14 +12,10 @@ class OccupancyGridNode(Node):
         # LIDAR subscription
         self.lidar_sub = self.create_subscription(
             LaserScan,
-            '/scan',  # Replace with your LIDAR topic name
+            'ego_scan_topic',  # Replace with your LIDAR topic name
             self.lidar_callback,
             10
         )
-
-        # Publishers
-        self.grid_pub = self.create_publisher(OccupancyGrid, '/occupancy_grid', 10)
-        self.frontier_pub = self.create_publisher(Marker, '/frontiers', 10)
 
         # Occupancy grid parameters
         self.grid_resolution = 0.05  # 5cm per cell
@@ -33,7 +26,19 @@ class OccupancyGridNode(Node):
         # Frontier tracking
         self.frontiers = []
 
-        self.get_logger().info("Occupancy Grid Node Initialized")
+        # Set up Matplotlib visualization
+        self.fig, self.ax = plt.subplots()
+        self.img = self.ax.imshow(self.occupancy_grid, cmap='gray', origin='lower', extent=[-10, 10, -10, 10])
+        self.ax.set_title("Occupancy Grid with Frontiers")
+        self.ax.set_xlabel("X (meters)")
+        self.ax.set_ylabel("Y (meters)")
+        self.frontier_points, = self.ax.plot([], [], 'ro', markersize=2, label="Frontiers")
+        self.ax.legend()
+
+        # Timer for Matplotlib updates
+        self.anim = FuncAnimation(self.fig, self.update_visualization, interval=100)
+
+        self.get_logger().info("Occupancy Grid Node Initialized with Matplotlib Visualization")
 
     def lidar_callback(self, msg: LaserScan):
         ranges = np.array(msg.ranges)
@@ -54,10 +59,6 @@ class OccupancyGridNode(Node):
 
         # Detect frontiers
         self.frontiers = self.detect_frontiers()
-
-        # Publish the grid and frontiers
-        self.publish_occupancy_grid()
-        self.publish_frontiers()
 
     def update_occupancy_grid(self, x_coords, y_coords):
         # Map coordinates to grid cells
@@ -87,63 +88,21 @@ class OccupancyGridNode(Node):
                         frontiers.append((x, y))
         return frontiers
 
-    def publish_occupancy_grid(self):
+    def update_visualization(self, _):
         """
-        Publish the occupancy grid as a ROS2 `nav_msgs/OccupancyGrid` message.
+        Update the Matplotlib visualization dynamically.
         """
-        grid_msg = OccupancyGrid()
-        grid_msg.header = Header()
-        grid_msg.header.stamp = self.get_clock().now().to_msg()
-        grid_msg.header.frame_id = 'map'
+        # Update the occupancy grid display
+        self.img.set_data(self.occupancy_grid)
 
-        # Grid metadata
-        grid_msg.info.resolution = self.grid_resolution
-        grid_msg.info.width = self.grid_size[0]
-        grid_msg.info.height = self.grid_size[1]
-        grid_msg.info.origin.position.x = -self.grid_size[0] * self.grid_resolution / 2
-        grid_msg.info.origin.position.y = -self.grid_size[1] * self.grid_resolution / 2
-        grid_msg.info.origin.position.z = 0.0
-        grid_msg.info.origin.orientation.w = 1.0
+        # Convert frontier grid coordinates to physical space
+        frontier_x = [(x - self.grid_center[0]) * self.grid_resolution for x, y in self.frontiers]
+        frontier_y = [(y - self.grid_center[1]) * self.grid_resolution for x, y in self.frontiers]
 
-        # Flatten grid and convert to ROS-compatible format
-        flattened_grid = self.occupancy_grid.flatten()
-        grid_msg.data = [int(cell) for cell in flattened_grid]
+        # Update frontier points
+        self.frontier_points.set_data(frontier_x, frontier_y)
 
-        # Publish the grid
-        self.grid_pub.publish(grid_msg)
-
-    def publish_frontiers(self):
-        """
-        Publish frontiers as a `visualization_msgs/Marker` message.
-        """
-        marker = Marker()
-        marker.header = Header()
-        marker.header.stamp = self.get_clock().now().to_msg()
-        marker.header.frame_id = 'map'
-
-        marker.ns = 'frontiers'
-        marker.id = 0
-        marker.type = Marker.POINTS
-        marker.action = Marker.ADD
-
-        marker.scale.x = 0.1  # Point size
-        marker.scale.y = 0.1
-        marker.color.r = 1.0
-        marker.color.g = 0.0
-        marker.color.b = 0.0
-        marker.color.a = 1.0  # Fully opaque
-
-        # Add frontier points
-        for (x, y) in self.frontiers:
-            # Convert grid coordinates to physical space
-            point = Point()
-            point.x = (x - self.grid_center[0]) * self.grid_resolution
-            point.y = (y - self.grid_center[1]) * self.grid_resolution
-            point.z = 0.0
-            marker.points.append(point)
-
-        # Publish marker
-        self.frontier_pub.publish(marker)
+        return [self.img, self.frontier_points]
 
     def bresenham_line(self, x0, y0, x1, y1):
         # Bresenham's line algorithm for grid traversal
@@ -173,10 +132,12 @@ def main(args=None):
     occupancy_grid_node = OccupancyGridNode()
 
     try:
+        plt.show()  # Display the Matplotlib visualization
         rclpy.spin(occupancy_grid_node)
     except KeyboardInterrupt:
         occupancy_grid_node.get_logger().info("Shutting down node.")
     finally:
+        plt.close()
         rclpy.shutdown()
 
 
