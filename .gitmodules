@@ -1,3 +1,6 @@
 [submodule "f1tenth_gym"]
 	path = f1tenth_gym
 	url = git@github.com:didikid3/f1tenth_gym.git
+[submodule "sim_ws/src/f1tenth_gym_ros"]
+	path = sim_ws/src/f1tenth_gym_ros
+	url = git@github.com:didikid3/f1tenth_gym_ros.git
