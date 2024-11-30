@@ -12,7 +12,7 @@ class OccupancyGridNode(Node):
         # LIDAR subscription
         self.lidar_sub = self.create_subscription(
             LaserScan,
-            'ego_scan_topic',  # Replace with your LIDAR topic name
+            '/scan',  # Replace with your LIDAR topic name
             self.lidar_callback,
             10
         )
@@ -28,7 +28,7 @@ class OccupancyGridNode(Node):
 
         # Set up Matplotlib visualization
         self.fig, self.ax = plt.subplots()
-        self.img = self.ax.imshow(self.occupancy_grid, cmap='hot', origin='lower', vmin=-1, vmax=1, extent=[-10, 10, -10, 10])
+        self.img = self.ax.imshow(self.occupancy_grid, cmap='gray', origin='lower', vmin=-1, vmax=1, extent=[-10, 10, -10, 10])
         self.ax.set_title("Occupancy Grid with Frontiers")
         self.ax.set_xlabel("X (meters)")
         self.ax.set_ylabel("Y (meters)")
