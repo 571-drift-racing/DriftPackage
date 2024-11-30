@@ -28,7 +28,7 @@ class OccupancyGridNode(Node):
 
         # Set up Matplotlib visualization
         self.fig, self.ax = plt.subplots()
-        self.img = self.ax.imshow(self.occupancy_grid, cmap='gray', origin='lower', vmin=-1, vmax=1, extent=[-10, 10, -10, 10])
+        self.img = self.ax.imshow(self.occupancy_grid, cmap='hot', origin='lower', vmin=-1, vmax=1, extent=[-10, 10, -10, 10])
         self.ax.set_title("Occupancy Grid with Frontiers")
         self.ax.set_xlabel("X (meters)")
         self.ax.set_ylabel("Y (meters)")
@@ -42,55 +42,49 @@ class OccupancyGridNode(Node):
 
     def lidar_callback(self, msg: LaserScan):
         ranges = np.array(msg.ranges)
+        self.get_logger().info(f"LIDAR Ranges: {ranges[:10]}")
+
         angles = msg.angle_min + np.arange(len(ranges)) * msg.angle_increment
         max_range = msg.range_max
-        
-        # Convert LIDAR data to Cartesian coordinates
-        x_coords = ranges * np.cos(angles)
-        y_coords = ranges * np.sin(angles)
 
+        # Filter invalid points
+        valid = (ranges > 0.05) & (ranges < max_range)
+        x_coords = ranges[valid] * np.cos(angles[valid])
+        y_coords = ranges[valid] * np.sin(angles[valid])
 
-        self.get_logger().info(f"LIDAR Points: X={x_coords[:10]} Y={y_coords[:10]}")
+        self.get_logger().info(f"Valid Points: {len(x_coords)}")
 
-
-        # Filter invalid data
-        valid = (ranges > 0) & (ranges < max_range)
-        x_coords = x_coords[valid]
-        y_coords = y_coords[valid]
-
-        # Update occupancy grid
+        # Update the grid
         self.update_occupancy_grid(x_coords, y_coords)
 
-        # Detect frontiers
-        self.frontiers = self.detect_frontiers()
-
     def update_occupancy_grid(self, x_coords, y_coords):
-        # Map coordinates to grid cells
         x_cells = np.floor(x_coords / self.grid_resolution + self.grid_center[0]).astype(int)
         y_cells = np.floor(y_coords / self.grid_resolution + self.grid_center[1]).astype(int)
 
-        # Clamp to grid bounds
         x_cells = np.clip(x_cells, 0, self.grid_size[0] - 1)
         y_cells = np.clip(y_cells, 0, self.grid_size[1] - 1)
+
+        # Mark free space
+        for x, y in zip(x_cells, y_cells):
+            for lx, ly in self.bresenham_line(self.grid_center[0], self.grid_center[1], x, y):
+                self.occupancy_grid[lx, ly] = -1  # Free space
 
         # Mark occupied cells
         self.occupancy_grid[x_cells, y_cells] = 1
 
-        # Mark free space (along rays)
-        for x, y in zip(x_cells, y_cells):
-            for lx, ly in self.bresenham_line(self.grid_center[0], self.grid_center[1], x, y):
-                self.occupancy_grid[lx, ly] = -1
+        # Debug: Check a subset of the grid
+        self.get_logger().info(f"Grid Center (5x5): {self.occupancy_grid[self.grid_center[0]-2:self.grid_center[0]+3, self.grid_center[1]-2:self.grid_center[1]+3]}")
 
     def detect_frontiers(self):
         frontiers = []
         for x in range(1, self.grid_size[0] - 1):
             for y in range(1, self.grid_size[1] - 1):
                 if self.occupancy_grid[x, y] == -1:  # Free cell
-                    # Check if neighbors include unknown cells
                     neighbors = self.occupancy_grid[x-1:x+2, y-1:y+2].flatten()
                     if 0 in neighbors:
                         frontiers.append((x, y))
-        
+
+        # Debug: Check frontier count
         self.get_logger().info(f"Detected {len(frontiers)} frontiers")
         return frontiers
 
@@ -98,9 +92,6 @@ class OccupancyGridNode(Node):
         """
         Update the Matplotlib visualization dynamically.
         """
-
-        self.get_logger().info(f"Grid Values (Center): {self.occupancy_grid[self.grid_center[0]-5:self.grid_center[0]+5, self.grid_center[1]-5:self.grid_center[1]+5]}")
-
         # Update the occupancy grid display
         self.img.set_data(self.occupancy_grid)
 
@@ -141,7 +132,7 @@ def main(args=None):
     occupancy_grid_node = OccupancyGridNode()
 
     try:
-        plt.show()  # Display the Matplotlib visualization
+        plt.show(block=False)  # Non-blocking Matplotlib visualization
         rclpy.spin(occupancy_grid_node)
     except KeyboardInterrupt:
         occupancy_grid_node.get_logger().info("Shutting down node.")
