@@ -1,0 +1,61 @@
+# Prerequisites
+*.d
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+*.log
+build/
+install/
+log/
+
+.bash_history
+.bash_logout
+.bashrc
+.cache/
+.config/
+.docker/
+.dotnet/
+.gnupg/
+.local/
+.mozilla/
+.pki/
+.profile
+.ros/
+.rviz2/
+.ssh
+.sudo_as_admin_successful
+.vscode/
+.wget-hsts
+Downloads/
+Pictures/
+snap/
+tmp/
+f1tenth-follow-the-gap/
