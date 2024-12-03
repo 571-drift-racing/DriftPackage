@@ -18,8 +18,8 @@ class OccupancyGridNode(Node):
         )
 
         # Occupancy grid parameters
-        self.grid_resolution = 0.25  # 5cm per cell
-        self.grid_size = (200, 200)  # 10m x 10m grid
+        self.grid_resolution = 0.15  # 25cm per cell
+        self.grid_size = (200, 200)  # 50m x 50m grid
         self.grid_center = (self.grid_size[0] // 2, self.grid_size[1] // 2)
         self.occupancy_grid = np.zeros(self.grid_size, dtype=np.int8)  # 0: unknown, 1: occupied, -1: free
         
@@ -40,22 +40,41 @@ class OccupancyGridNode(Node):
 
         self.get_logger().info("Occupancy Grid Node Initialized with Matplotlib Visualization")
 
+
+    def print_points(self, x, y):
+        for i in range(len(x)):
+            print(f"({x[i]}, {y[i]})", end=" ")
+            if i % 8 == 0:
+                print()
+
     def lidar_callback(self, msg: LaserScan):
         ranges = np.array(msg.ranges)
         self.get_logger().info(f"LIDAR Ranges: {ranges[:10]}")
 
-        angles = msg.angle_min + np.arange(len(ranges)) * msg.angle_increment
+        angles = np.pi/2 + msg.angle_min + np.arange(len(ranges)) * msg.angle_increment
         max_range = msg.range_max
 
         # Filter invalid points
-        valid = (ranges > 0.05) & (ranges < max_range)
+        valid = (ranges > 0)
         x_coords = ranges[valid] * np.cos(angles[valid])
         y_coords = ranges[valid] * np.sin(angles[valid])
 
-        self.get_logger().info(f"Valid Points: {len(x_coords)}")
+        # self.ax.clear()
+        # self.ax.scatter(x_coords, y_coords, s=1, c='blue')
+        # self.ax.set_title('LIDAR Point Cloud')
+        # self.ax.set_xlabel('X Coordinates (meters)')
+        # self.ax.set_ylabel('Y Coordinates (meters)')
+        # self.ax.axis('equal')
+        # self.ax.grid(True)
+
+        # plt.draw()
+        # plt.pause(0.001)
 
         # Update the grid
         self.update_occupancy_grid(x_coords, y_coords)
+
+        # Detect frontiers
+        self.frontiers = self.detect_frontiers()
 
     def update_occupancy_grid(self, x_coords, y_coords):
         x_cells = np.floor(x_coords / self.grid_resolution + self.grid_center[0]).astype(int)
@@ -67,13 +86,14 @@ class OccupancyGridNode(Node):
         # Mark free space
         for x, y in zip(x_cells, y_cells):
             for lx, ly in self.bresenham_line(self.grid_center[0], self.grid_center[1], x, y):
-                self.occupancy_grid[lx, ly] = -1  # Free space
+                if self.occupancy_grid[lx, ly] == 0:  # Only update unknown cells to free
+                    self.occupancy_grid[lx, ly] = -1  # Free space
 
         # Mark occupied cells
         self.occupancy_grid[x_cells, y_cells] = 1
 
         # Debug: Check a subset of the grid
-        self.get_logger().info(f"Grid Center (5x5): {self.occupancy_grid[self.grid_center[0]-2:self.grid_center[0]+3, self.grid_center[1]-2:self.grid_center[1]+3]}")
+        self.get_logger().info(f"Grid Center (5x5): \n{self.occupancy_grid[self.grid_center[0]-9:self.grid_center[0]+10, self.grid_center[1]-9:self.grid_center[1]+10]}")
 
     def detect_frontiers(self):
         frontiers = []
@@ -81,7 +101,7 @@ class OccupancyGridNode(Node):
             for y in range(1, self.grid_size[1] - 1):
                 if self.occupancy_grid[x, y] == -1:  # Free cell
                     neighbors = self.occupancy_grid[x-1:x+2, y-1:y+2].flatten()
-                    if 0 in neighbors:
+                    if 0 in neighbors:  # If there's an unknown cell nearby
                         frontiers.append((x, y))
 
         # Debug: Check frontier count
