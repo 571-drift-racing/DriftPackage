@@ -19,15 +19,17 @@ class OccupancyGridNode(Node):
         )
 
         # Occupancy grid parameters
-        self.grid_resolution = 0.15  # 25cm per cell
-        self.grid_size = (200, 200)  # 50m x 50m grid
+        self.grid_resolution = 0.15
+        self.grid_size = (200, 200)
         self.grid_center = (self.grid_size[0] // 2, self.grid_size[1] // 2)
-        self.occupancy_grid = np.zeros(self.grid_size, dtype=np.int8)  # 0: unknown, 1: occupied, -1: free
+
+        # 0: unknown, 1: occupied, -1: free
+        self.occupancy_grid = np.zeros(self.grid_size, dtype=np.int8)
         
         # Frontier tracking
         self.frontiers = []
 
-        self.publisher_ = self.create_publisher(OccupancyGrid, '/custom_occupancy_grid', 10)
+        self.publisher_ = self.create_publisher(OccupancyGrid, '/occupancy_grid', 10)
         self.timer = self.create_timer(0.1, self.timer_callback)
 
         self.get_logger().info("Occupancy Grid Node Initialized")
@@ -48,7 +50,7 @@ class OccupancyGridNode(Node):
 
         # Publish the message
         self.publisher_.publish(msg)
-        self.get_logger().info(f"Published Occupancy Grid: Resolution {msg.resolution}, Size {msg.width}x{msg.height}")
+        # self.get_logger().info(f"Published Occupancy Grid: Resolution {msg.resolution}, Size {msg.width}x{msg.height}")
 
 
     def print_points(self, x, y):
@@ -68,17 +70,6 @@ class OccupancyGridNode(Node):
         valid = (ranges > 0)
         x_coords = ranges[valid] * np.cos(angles[valid])
         y_coords = ranges[valid] * np.sin(angles[valid])
-
-        # self.ax.clear()
-        # self.ax.scatter(x_coords, y_coords, s=1, c='blue')
-        # self.ax.set_title('LIDAR Point Cloud')
-        # self.ax.set_xlabel('X Coordinates (meters)')
-        # self.ax.set_ylabel('Y Coordinates (meters)')
-        # self.ax.axis('equal')
-        # self.ax.grid(True)
-
-        # plt.draw()
-        # plt.pause(0.001)
 
         # Update the grid
         self.update_occupancy_grid(x_coords, y_coords)
