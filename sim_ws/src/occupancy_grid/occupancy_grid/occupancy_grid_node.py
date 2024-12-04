@@ -1,9 +1,10 @@
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import LaserScan
+from std_msgs.msg import Header
+from occupancy_grid.msg import OccupancyGrid
+
 import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation
 
 class OccupancyGridNode(Node):
     def __init__(self):
@@ -26,19 +27,28 @@ class OccupancyGridNode(Node):
         # Frontier tracking
         self.frontiers = []
 
-        # Set up Matplotlib visualization
-        self.fig, self.ax = plt.subplots()
-        self.img = self.ax.imshow(self.occupancy_grid, cmap='hot', origin='lower', vmin=-1, vmax=1, extent=[-10, 10, -10, 10])
-        self.ax.set_title("Occupancy Grid with Frontiers")
-        self.ax.set_xlabel("X (meters)")
-        self.ax.set_ylabel("Y (meters)")
-        self.frontier_points, = self.ax.plot([], [], 'ro', markersize=2, label="Frontiers")
-        self.ax.legend()
+        self.publisher_ = self.create_publisher(OccupancyGrid, '/custom_occupancy_grid', 10)
+        self.timer = self.create_timer(0.1, self.timer_callback)
 
-        # Timer for Matplotlib updates
-        self.anim = FuncAnimation(self.fig, self.update_visualization, interval=100)
+        self.get_logger().info("Occupancy Grid Node Initialized")
 
-        self.get_logger().info("Occupancy Grid Node Initialized with Matplotlib Visualization")
+    def timer_callback(self):
+        # Create and populate the custom OccupancyGrid message
+        msg = OccupancyGrid()
+        msg.header = Header()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.header.frame_id = "map"
+
+        msg.resolution = self.grid_resolution
+        msg.width = self.grid_size[0]
+        msg.height = self.grid_size[1]
+
+        # Flatten the 2D grid into a 1D array
+        msg.data = self.occupancy_grid.flatten().tolist()
+
+        # Publish the message
+        self.publisher_.publish(msg)
+        self.get_logger().info(f"Published Occupancy Grid: Resolution {msg.resolution}, Size {msg.width}x{msg.height}")
 
 
     def print_points(self, x, y):
@@ -93,7 +103,7 @@ class OccupancyGridNode(Node):
         self.occupancy_grid[x_cells, y_cells] = 1
 
         # Debug: Check a subset of the grid
-        self.get_logger().info(f"Grid Center (5x5): \n{self.occupancy_grid[self.grid_center[0]-9:self.grid_center[0]+10, self.grid_center[1]-9:self.grid_center[1]+10]}")
+        self.get_logger().info(f"Grid Center: \n{self.occupancy_grid[self.grid_center[0]-9:self.grid_center[0]+10, self.grid_center[1]-9:self.grid_center[1]+10]}")
 
     def detect_frontiers(self):
         frontiers = []
@@ -152,12 +162,12 @@ def main(args=None):
     occupancy_grid_node = OccupancyGridNode()
 
     try:
-        plt.show(block=False)  # Non-blocking Matplotlib visualization
+        # plt.show(block=False)  # Non-blocking Matplotlib visualization
         rclpy.spin(occupancy_grid_node)
     except KeyboardInterrupt:
         occupancy_grid_node.get_logger().info("Shutting down node.")
     finally:
-        plt.close()
+        # plt.close()
         rclpy.shutdown()
 
 
