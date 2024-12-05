@@ -24,6 +24,7 @@ find_package(std_msgs REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/OccupancyGrid.msg"
   DEPENDENCIES std_msgs
+)
 
 
 if(BUILD_TESTING)
