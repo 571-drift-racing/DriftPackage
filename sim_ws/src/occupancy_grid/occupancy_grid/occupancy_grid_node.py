@@ -13,7 +13,7 @@ class OccupancyGridNode(Node):
         # LIDAR subscription
         self.lidar_sub = self.create_subscription(
             LaserScan,
-            '/scan',  # Replace with your LIDAR topic name
+            '/scan',
             self.lidar_callback,
             10
         )
