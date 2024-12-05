@@ -2,7 +2,7 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import LaserScan
 from std_msgs.msg import Header
-from occupancy_grid.msg import OccupancyGrid
+from racecar_interfaces.msg import OccupancyGrid
 
 import numpy as np
 
