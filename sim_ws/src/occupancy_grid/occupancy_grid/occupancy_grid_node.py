@@ -83,7 +83,7 @@ class OccupancyGridNode(Node):
         self.update_occupancy_grid(x_coords, y_coords)
 
         # Detect frontiers
-        self.frontiers = self.detect_frontiers()
+        # self.frontiers = self.detect_frontiers()
 
 
         # self.update_visualization()
