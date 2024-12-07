@@ -5,7 +5,7 @@ from ackermann_msgs.msg import AckermannDriveStamped
 from racecar_interfaces.msg import OccupancyGrid
 
 import numpy as np
-
+import math
 class SimpleFrontierNode(Node):
     def __init__(self):
         super().__init__('simple_frontier_node')
@@ -50,13 +50,49 @@ class SimpleFrontierNode(Node):
                     if 0 in neighbors:  # If there's an unknown cell nearby
                         frontiers.append((x, y))
                         avg_x, avg_y = avg_x + x, avg_y + y
-
         # driveMsg = AckermannDriveStamped()
         # driveMsg.drive.steering_angle = avg_x/len(frontiers) - 100
         # driveMsg.drive.speed = (avg_y/len(frontiers) - 100 / 100) * 7.0
         # self.cmdDrive_pub.publish(driveMsg)
+        return frontiers
+    def select_closest_frontier(self, frontiers):
+        min_distance = float('inf')
+        target_frontier = None
 
+        for frontier in frontiers:
+            distance = math.sqrt((frontier[0] - self.grid_center[0])**2 + (frontier[1] - self.grid_center[1])**2)
+            if distance < min_distance:
+                min_distance = distance
+                target_frontier = frontier
+
+        return target_frontier
     
+    def calculate_motion_command(self, target):
+        dx = target[0] - self.grid_center[0]
+        dy = target[1] - self.grid_center[1]
+        angle_to_target = math.atan2(dy, dx)
+
+        drive_msg = AckermannDriveStamped()
+        drive_msg.drive.steering_angle = angle_to_target
+        drive_msg.drive.speed = min(5.0, math.sqrt(dx**2 + dy**2) / 10.0)  # Speed capped at 5.0 m/s
+
+        return drive_msg
+    
+    def explore_frontiers(self):
+        frontiers = self.detect_frontiers()
+
+        if not frontiers:
+            self.get_logger().info("No frontiers detected. Exploration complete.")
+            return
+
+        target_frontier = self.select_closest_frontier(frontiers)
+
+        if target_frontier:
+            drive_msg = self.calculate_motion_command(target_frontier)
+            self.cmdDrive_pub.publish(drive_msg)
+            self.get_logger().info(f"Driving to frontier at {target_frontier}")
+        else:
+            self.get_logger().warn("No valid target frontier found.")
 
 def main(args=None):
     rclpy.init(args=args)
@@ -70,3 +106,6 @@ def main(args=None):
     finally:
         # plt.close()
         rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
