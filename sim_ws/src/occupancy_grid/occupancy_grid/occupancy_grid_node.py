@@ -31,8 +31,8 @@ class OccupancyGridNode(Node):
         # Frontier tracking
         self.frontiers = []
 
-        # self.publisher_ = self.create_publisher(OccupancyGrid, '/occupancy_grid', 10)
-        # self.timer = self.create_timer(0.1, self.timer_callback)
+        self.publisher_ = self.create_publisher(OccupancyGrid, '/occupancy_grid', 10)
+        self.timer = self.create_timer(0.1, self.timer_callback)
 
         # self.fig, self.ax = plt.subplots()
         # self.img = self.ax.imshow(
