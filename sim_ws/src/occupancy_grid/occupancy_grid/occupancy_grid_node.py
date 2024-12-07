@@ -4,6 +4,8 @@ from sensor_msgs.msg import LaserScan
 from std_msgs.msg import Header
 from racecar_interfaces.msg import OccupancyGrid
 
+import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
 import numpy as np
 
 class OccupancyGridNode(Node):
@@ -29,8 +31,22 @@ class OccupancyGridNode(Node):
         # Frontier tracking
         self.frontiers = []
 
-        self.publisher_ = self.create_publisher(OccupancyGrid, '/occupancy_grid', 10)
-        self.timer = self.create_timer(0.1, self.timer_callback)
+        # self.publisher_ = self.create_publisher(OccupancyGrid, '/occupancy_grid', 10)
+        # self.timer = self.create_timer(0.1, self.timer_callback)
+
+        # self.fig, self.ax = plt.subplots()
+        # self.img = self.ax.imshow(
+        #     self.occupancy_grid,
+        #     cmap='gray',
+        #     origin='lower',
+        #     extent=(-self.grid_center[0] * self.grid_resolution,
+        #             (self.grid_size[0] - self.grid_center[0]) * self.grid_resolution,
+        #             -self.grid_center[1] * self.grid_resolution,
+        #             (self.grid_size[1] - self.grid_center[1]) * self.grid_resolution)
+        # )
+        # self.frontier_points, = self.ax.plot([], [], 'ro', markersize=3)
+        # self.ani = FuncAnimation(self.fig, self.update_visualization, interval=100)
+        # plt.show(block=False)
 
         self.get_logger().info("Occupancy Grid Node Initialized")
 
@@ -50,14 +66,6 @@ class OccupancyGridNode(Node):
 
         # Publish the message
         self.publisher_.publish(msg)
-        # self.get_logger().info(f"Published Occupancy Grid: Resolution {msg.resolution}, Size {msg.width}x{msg.height}")
-
-
-    def print_points(self, x, y):
-        for i in range(len(x)):
-            print(f"({x[i]}, {y[i]})", end=" ")
-            if i % 8 == 0:
-                print()
 
     def lidar_callback(self, msg: LaserScan):
         ranges = np.array(msg.ranges)
@@ -77,7 +85,11 @@ class OccupancyGridNode(Node):
         # Detect frontiers
         self.frontiers = self.detect_frontiers()
 
+
+        # self.update_visualization()
+
     def update_occupancy_grid(self, x_coords, y_coords):
+        self.occupancy_grid = np.zeros(self.grid_size, dtype=np.int8)
         x_cells = np.floor(x_coords / self.grid_resolution + self.grid_center[0]).astype(int)
         y_cells = np.floor(y_coords / self.grid_resolution + self.grid_center[1]).astype(int)
 
@@ -94,7 +106,7 @@ class OccupancyGridNode(Node):
         self.occupancy_grid[x_cells, y_cells] = 1
 
         # Debug: Check a subset of the grid
-        self.get_logger().info(f"Grid Center: \n{self.occupancy_grid[self.grid_center[0]-9:self.grid_center[0]+10, self.grid_center[1]-9:self.grid_center[1]+10]}")
+        # self.get_logger().info(f"Grid Center: \n{self.occupancy_grid[self.grid_center[0]-9:self.grid_center[0]+10, self.grid_center[1]-9:self.grid_center[1]+10]}")
 
     def detect_frontiers(self):
         frontiers = []
@@ -109,10 +121,7 @@ class OccupancyGridNode(Node):
         self.get_logger().info(f"Detected {len(frontiers)} frontiers")
         return frontiers
 
-    def update_visualization(self, _):
-        """
-        Update the Matplotlib visualization dynamically.
-        """
+    def update_visualization(self):
         # Update the occupancy grid display
         self.img.set_data(self.occupancy_grid)
 
@@ -123,7 +132,9 @@ class OccupancyGridNode(Node):
         # Update frontier points
         self.frontier_points.set_data(frontier_x, frontier_y)
 
-        return [self.img, self.frontier_points]
+        # Refresh Matplotlib plot
+        self.fig.canvas.draw_idle()
+        plt.pause(0.001)
 
     def bresenham_line(self, x0, y0, x1, y1):
         # Bresenham's line algorithm for grid traversal
