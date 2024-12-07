@@ -51,10 +51,10 @@ class SimpleFrontierNode(Node):
                         frontiers.append((x, y))
                         avg_x, avg_y = avg_x + x, avg_y + y
 
-        driveMsg = AckermannDriveStamped()
-        driveMsg.drive.steering_angle = avg_x/len(frontiers) - 100
-        driveMsg.drive.speed = (avg_y/len(frontiers) - 100 / 100) * 7.0
-        self.cmdDrive_pub.publish(driveMsg)
+        # driveMsg = AckermannDriveStamped()
+        # driveMsg.drive.steering_angle = avg_x/len(frontiers) - 100
+        # driveMsg.drive.speed = (avg_y/len(frontiers) - 100 / 100) * 7.0
+        # self.cmdDrive_pub.publish(driveMsg)
 
     
 
