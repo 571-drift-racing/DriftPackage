@@ -69,7 +69,7 @@ class OccupancyGridNode(Node):
 
     def lidar_callback(self, msg: LaserScan):
         ranges = np.array(msg.ranges)
-        self.get_logger().info(f"LIDAR Ranges: {ranges[:10]}")
+        # self.get_logger().info(f"LIDAR Ranges: {ranges[:10]}")
 
         angles = np.pi/2 + msg.angle_min + np.arange(len(ranges)) * msg.angle_increment
         max_range = msg.range_max
@@ -118,7 +118,7 @@ class OccupancyGridNode(Node):
                         frontiers.append((x, y))
 
         # Debug: Check frontier count
-        self.get_logger().info(f"Detected {len(frontiers)} frontiers")
+        # self.get_logger().info(f"Detected {len(frontiers)} frontiers")
         return frontiers
 
     def update_visualization(self):
