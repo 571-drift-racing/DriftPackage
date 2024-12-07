@@ -21,7 +21,7 @@ class OccupancyGridNode(Node):
         )
 
         # Occupancy grid parameters
-        self.grid_resolution = 0.15
+        self.grid_resolution = 0.1
         self.grid_size = (200, 200)
         self.grid_center = (self.grid_size[0] // 2, self.grid_size[1] // 2)
 
@@ -34,19 +34,18 @@ class OccupancyGridNode(Node):
         self.publisher_ = self.create_publisher(OccupancyGrid, '/occupancy_grid', 10)
         self.timer = self.create_timer(0.1, self.timer_callback)
 
-        # self.fig, self.ax = plt.subplots()
-        # self.img = self.ax.imshow(
-        #     self.occupancy_grid,
-        #     cmap='gray',
-        #     origin='lower',
-        #     extent=(-self.grid_center[0] * self.grid_resolution,
-        #             (self.grid_size[0] - self.grid_center[0]) * self.grid_resolution,
-        #             -self.grid_center[1] * self.grid_resolution,
-        #             (self.grid_size[1] - self.grid_center[1]) * self.grid_resolution)
-        # )
-        # self.frontier_points, = self.ax.plot([], [], 'ro', markersize=3)
-        # self.ani = FuncAnimation(self.fig, self.update_visualization, interval=100)
-        # plt.show(block=False)
+
+        self.fig, self.ax = plt.subplots()
+        self.img = self.ax.imshow(
+            self.occupancy_grid,
+            cmap='gray',
+            origin='lower'
+        )
+        self.ax.set_title("Occupancy Grid")
+        self.ax.set_xlabel("X (meters)")
+        self.ax.set_ylabel("Y (meters)")
+        plt.ion()  # Enable interactive mode
+        plt.show()
 
         self.get_logger().info("Occupancy Grid Node Initialized")
 
@@ -81,6 +80,7 @@ class OccupancyGridNode(Node):
 
         # Update the grid
         self.update_occupancy_grid(x_coords, y_coords)
+        self.update_visualization()
 
         # Detect frontiers
         # self.frontiers = self.detect_frontiers()
@@ -108,33 +108,6 @@ class OccupancyGridNode(Node):
         # Debug: Check a subset of the grid
         # self.get_logger().info(f"Grid Center: \n{self.occupancy_grid[self.grid_center[0]-9:self.grid_center[0]+10, self.grid_center[1]-9:self.grid_center[1]+10]}")
 
-    def detect_frontiers(self):
-        frontiers = []
-        for x in range(1, self.grid_size[0] - 1):
-            for y in range(1, self.grid_size[1] - 1):
-                if self.occupancy_grid[x, y] == -1:  # Free cell
-                    neighbors = self.occupancy_grid[x-1:x+2, y-1:y+2].flatten()
-                    if 0 in neighbors:  # If there's an unknown cell nearby
-                        frontiers.append((x, y))
-
-        # Debug: Check frontier count
-        # self.get_logger().info(f"Detected {len(frontiers)} frontiers")
-        return frontiers
-
-    def update_visualization(self):
-        # Update the occupancy grid display
-        self.img.set_data(self.occupancy_grid)
-
-        # Convert frontier grid coordinates to physical space
-        frontier_x = [(x - self.grid_center[0]) * self.grid_resolution for x, y in self.frontiers]
-        frontier_y = [(y - self.grid_center[1]) * self.grid_resolution for x, y in self.frontiers]
-
-        # Update frontier points
-        self.frontier_points.set_data(frontier_x, frontier_y)
-
-        # Refresh Matplotlib plot
-        self.fig.canvas.draw_idle()
-        plt.pause(0.001)
 
     def bresenham_line(self, x0, y0, x1, y1):
         # Bresenham's line algorithm for grid traversal
@@ -157,6 +130,13 @@ class OccupancyGridNode(Node):
                 err += dx
                 y0 += sy
         return line
+
+
+    def update_visualization(self):
+        # Update the image data in the plot
+        self.img.set_data(self.occupancy_grid)
+        plt.draw()
+        plt.pause(0.001)  # Small pause for rendering
 
 
 def main(args=None):

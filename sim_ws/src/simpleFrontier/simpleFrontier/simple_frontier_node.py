@@ -37,7 +37,7 @@ class SimpleFrontierNode(Node):
         grid_center = (msg.width // 2, msg.height // 2)
 
         # self.get_logger().info(f"Grid Center: \n{self.occupancy_grid[grid_center[0]-9:grid_center[0]+10, grid_center[1]-9:grid_center[1]+10]}")
-        self.detect_frontiers()
+        self.explore_frontiers()
 
 
     def detect_frontiers(self):
@@ -56,11 +56,18 @@ class SimpleFrontierNode(Node):
         # self.cmdDrive_pub.publish(driveMsg)
         return frontiers
     def select_closest_frontier(self, frontiers):
+        if not frontiers:
+            return None
+
+        grid_center = (self.grid_size[0] // 2, self.grid_size[1] // 2)
+
         min_distance = float('inf')
         target_frontier = None
 
         for frontier in frontiers:
-            distance = math.sqrt((frontier[0] - self.grid_center[0])**2 + (frontier[1] - self.grid_center[1])**2)
+            dx = frontier[0] - grid_center[0]
+            dy = frontier[1] - grid_center[1]
+            distance = math.sqrt(dx**2 + dy**2)
             if distance < min_distance:
                 min_distance = distance
                 target_frontier = frontier
@@ -78,6 +85,27 @@ class SimpleFrontierNode(Node):
 
         return drive_msg
     
+    def is_path_clear(self, drive_msg):
+        grid_center = (self.grid_size[0] // 2, self.grid_size[1] // 2)
+        dx = int(drive_msg.drive.steering_angle * 10)  
+        dy = int(drive_msg.drive.speed * 10)  
+
+        x, y = grid_center
+        while 0 <= x < self.grid_size[0] and 0 <= y < self.grid_size[1]:
+            if self.occupancy_grid[x, y] == 1:  
+                return False
+            x += dx
+            y += dy
+
+        return True
+    
+    def stop_robot(self):
+        drive_msg = AckermannDriveStamped()
+        drive_msg.drive.steering_angle = 0.0
+        drive_msg.drive.speed = 0.0
+        self.cmdDrive_pub.publish(drive_msg)
+        self.get_logger().info("Robot stopped.")
+    
     def explore_frontiers(self):
         frontiers = self.detect_frontiers()
 
@@ -89,8 +117,13 @@ class SimpleFrontierNode(Node):
 
         if target_frontier:
             drive_msg = self.calculate_motion_command(target_frontier)
-            self.cmdDrive_pub.publish(drive_msg)
-            self.get_logger().info(f"Driving to frontier at {target_frontier}")
+
+            if self.is_path_clear(drive_msg):
+                self.cmdDrive_pub.publish(drive_msg)
+                self.get_logger().info(f"Driving to frontier at {target_frontier}")
+            else:
+                self.get_logger().warn("Path blocked! Re-evaluating frontiers.")
+                self.stop_robot()
         else:
             self.get_logger().warn("No valid target frontier found.")
 
