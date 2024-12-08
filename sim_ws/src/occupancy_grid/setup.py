@@ -1,5 +1,6 @@
 from setuptools import setup
 from glob import glob
+import os
 
 
 package_name = 'occupancy_grid'
@@ -12,7 +13,7 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
-        ('share/' + package_name + '/msg', glob('msg/*.msg')),
+        (os.path.join('share', package_name, 'launch'), glob(os.path.join('launch', '*launch.[pxy][yma]*'))),
     ],
     install_requires=['setuptools', 'numpy', 'matplotlib', 'scikit-learn'],
     zip_safe=True,

@@ -7,6 +7,8 @@ from racecar_interfaces.msg import OccupancyGrid
 import numpy as np
 import matplotlib.pyplot as plt  # Import Matplotlib
 
+DEBUG = False
+
 class OccupancyGridNode(Node):
     def __init__(self):
         super().__init__('occupancy_grid_node')
@@ -27,19 +29,20 @@ class OccupancyGridNode(Node):
         # 0: unknown, 1: occupied, -1: free
         self.occupancy_grid = np.zeros(self.grid_size, dtype=np.int8)
         
-        # Visualization setup
-        self.fig, self.ax = plt.subplots()
-        self.im = self.ax.imshow(
-            self.occupancy_grid,
-            cmap="gray",
-            origin="lower",
-            extent=[
-                0, self.grid_size[0],  # x-axis extent
-                0, self.grid_size[1],  # y-axis extent
-            ],
-        )
-        plt.ion()
-        plt.show()
+        if DEBUG:
+            # Visualization setup
+            self.fig, self.ax = plt.subplots()
+            self.im = self.ax.imshow(
+                self.occupancy_grid,
+                cmap="gray",
+                origin="lower",
+                extent=[
+                    0, self.grid_size[0],  # x-axis extent
+                    0, self.grid_size[1],  # y-axis extent
+                ],
+            )
+            plt.ion()
+            plt.show()
 
         # Publisher setup
         self.publisher_ = self.create_publisher(OccupancyGrid, '/occupancy_grid', 10)
@@ -64,8 +67,9 @@ class OccupancyGridNode(Node):
         # Publish the message
         self.publisher_.publish(msg)
 
-        # Update the visualization
-        self.update_visualization()
+        if DEBUG:
+            # Update the visualization
+            self.update_visualization()
 
     def lidar_callback(self, msg: LaserScan):
         ranges = np.array(msg.ranges)

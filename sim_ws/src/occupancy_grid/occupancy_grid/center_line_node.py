@@ -1,10 +1,13 @@
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import LaserScan
+from ackermann_msgs.msg import AckermannDriveStamped
+from std_msgs.msg import Bool
 
 from scipy.interpolate import interp1d, splprep, splev
 import numpy as np
 import matplotlib.pyplot as plt  # Import Matplotlib
+import math
 
 ############## Constants ##############
 wheelbase = .3302 #car length meters
@@ -12,9 +15,10 @@ l_c, l_b = 0.75, 2  # Lookahead Parameters
 
 boundaryDeltaThreshold = 0.8 # Threshold for classifying boundaries
 resampleBoundary_short, resampleBoundary_long = 50, 100
-segmentMaxLength = 54
+segmentMaxLength = 45
 ############## Constants ##############
 
+DEBUG = False
 
 class CenterLineNode(Node):
     def __init__(self):
@@ -22,14 +26,28 @@ class CenterLineNode(Node):
 
         self.heading = None
         self.curSpeed = 0
+        self.processingSignal = False
+
 
         # LIDAR subscription
         self.lidar_sub = self.create_subscription(
             LaserScan,
             '/scan',
             self.lidar_callback,
+            40
+        )
+
+        self.control_sub = self.create_subscription(
+            Bool,
+            '/curve_alert',
+            self.curveAlert_callback,
             10
         )
+
+        self.cmdDrive_pub = self.create_publisher(
+            AckermannDriveStamped,
+            '/drive', 
+            500)
 
         # Occupancy grid parameters
         self.grid_resolution = 0.05
@@ -39,21 +57,28 @@ class CenterLineNode(Node):
         # 0: unknown, 1: occupied, -1: free
         self.occupancy_grid = np.zeros(self.grid_size, dtype=np.int8)
         
-        # Visualization setup
-        self.fig, self.ax = plt.subplots()
-        self.im = self.ax.imshow(
-            self.occupancy_grid,
-            cmap="gray",
-            origin="lower",
-            extent=[
-                0, self.grid_size[0],  # x-axis extent
-                0, self.grid_size[1],  # y-axis extent
-            ],
-        )
-        plt.ion()
-        plt.show()
+        if DEBUG:
+            # Visualization setup
+            self.fig, self.ax = plt.subplots()
+            self.im = self.ax.imshow(
+                self.occupancy_grid,
+                cmap="gray",
+                origin="lower",
+                extent=[
+                    0, self.grid_size[0],  # x-axis extent
+                    0, self.grid_size[1],  # y-axis extent
+                ],
+            )
+            plt.ion()
+            plt.show()
+
         self.get_logger().info("Occupancy Grid Node Initialized")
 
+
+    def curveAlert_callback(self, msg: Bool):
+        if msg.data != self.processingSignal:
+            self.get_logger().info(f"New Processing Signal Received!! {msg.data}")
+        self.processingSignal = msg.data
 
     def lidar_callback(self, msg: LaserScan):
         ranges = np.array(msg.ranges)
@@ -67,17 +92,46 @@ class CenterLineNode(Node):
         y_coords = ranges[valid] * np.sin(angles[valid])
 
         x_coords, y_coords = self.update_occupancy_grid(x_coords, y_coords)
-        self.update_boundary(x_coords, y_coords)
-        self.centerline = self.calculate_centerline(self.segments)
 
-        steeringAngle = self.pure_pursuit(np.array([100, 25]),
-                                    self.heading,
-                                    self.centerline,
-                                    l_b + self.curSpeed * l_c,
-                                    wheelbase)
-        print(steeringAngle if steeringAngle else 0)
+        if self.processingSignal:
+            self.get_logger().info("Processing Boundary and Segments ...")
+            self.update_boundary(x_coords, y_coords)
 
-        self.update_visualization()
+            try:
+                self.segments
+            except:
+                return
+
+            self.centerline = self.calculate_centerline(self.segments)
+
+            steeringAngle = self.pure_pursuit(np.array([100, 25]),
+                                        self.heading,
+                                        self.centerline,
+                                        l_b + self.curSpeed * l_c,
+                                        wheelbase)
+            
+            steeringAngle = steeringAngle if not math.isnan(steeringAngle) else 0.0
+
+        # Put something to handle within and beyond friction limits
+        # stA = abs(steeringAngle)
+        # if stA < np.pi/6:
+        #     self.curSpeed = 8.0
+        # elif stA < np.pi/4:
+        #     self.curSpeed = 6.0
+        # elif stA < np.pi/3:
+        #     self.curSpeed = 4.0
+        # else:
+        #     self.curSpeed = 2.0
+
+        # print(self.curSpeed, steeringAngle)
+
+        # driveMsg = AckermannDriveStamped()
+        # driveMsg.drive.steering_angle = steeringAngle
+        # driveMsg.drive.speed = self.curSpeed
+        # self.cmdDrive_pub.publish(driveMsg)
+        
+        if DEBUG:
+            self.update_visualization()
 
     def update_occupancy_grid(self, x_coords, y_coords):
         self.occupancy_grid = np.zeros(self.grid_size, dtype=np.int8)
@@ -86,38 +140,7 @@ class CenterLineNode(Node):
 
         x_cells = np.clip(x_cells, 0, self.grid_size[0] - 1)
         y_cells = np.clip(y_cells, 0, self.grid_size[1] - 1)
-
-        # Mark free space
-        # for x, y in zip(x_cells, y_cells):
-        #     for lx, ly in self.bresenham_line(self.grid_center[0], self.grid_center[1], x, y):
-        #         if self.occupancy_grid[ly, lx] == 0:  # Only update unknown cells to free
-        #             self.occupancy_grid[ly, lx] = -1  # Free space
-
-        # # Mark occupied cells
-        # self.occupancy_grid[y_cells, x_cells] = 1
         return x_cells, y_cells
-    
-    def bresenham_line(self, x0, y0, x1, y1):
-        line = []
-        dx = abs(x1 - x0)
-        dy = abs(y1 - y0)
-        sx = 1 if x0 < x1 else -1
-        sy = 1 if y0 < y1 else -1
-        err = dx - dy
-
-        while True:
-            line.append((x0, y0))
-            if x0 == x1 and y0 == y1:
-                break
-            e2 = 2 * err
-            if e2 > -dy:
-                err -= dy
-                x0 += sx
-            if e2 < dx:
-                err += dx
-                y0 += sy
-        return line
-
 
     def update_boundary(self, x_coords, y_coords):
         left_boundary, right_boundary = self.classify_boundaries(x_coords, y_coords)
@@ -139,6 +162,7 @@ class CenterLineNode(Node):
         self.heading = self.guessHeading()
 
         self.segments = self.calculate_segments(self.b_long, self.b_short, segmentMaxLength)
+        self.segments = self.filter_overlapping_segments(self.segments)
 
     def classify_boundaries(self, x_coords, y_coords):
         # Combine x and y coordinates into a single array
@@ -222,13 +246,28 @@ class CenterLineNode(Node):
                 # Append projected segment to the list
                 for j, point in enumerate(remaining_b_long):
                     projected_point = point + normals[j] * avg_width
-                    if np.linalg.norm(projected_point - point) <= 1.5 * w_max:  # Keep projection within bounds
+                    if np.linalg.norm(projected_point - point) <= 1.25 * w_max:  # Keep projection within bounds
                         segments.append([point, projected_point])
                     
                 break  # End loop after projecting the remaining section
 
         return segments
     
+    def filter_overlapping_segments(self, segments, min_distance=5.0):
+        """
+        Remove segments with overlapping or very close midpoints.
+        """
+        filtered_segments = []
+        prev_midpoint = None
+
+        for segment in segments:
+            midpoint = (segment[0] + segment[1]) / 2
+            if prev_midpoint is None or np.linalg.norm(midpoint - prev_midpoint) > min_distance:
+                filtered_segments.append(segment)
+                prev_midpoint = midpoint
+
+        return filtered_segments
+
     def calculate_normals(self, points):
         """
         Calculate approximate normals for a set of points.
@@ -270,15 +309,14 @@ class CenterLineNode(Node):
         return normals
 
     def calculate_centerline(self, segments):
-        center_points = []
-        for segment in segments:
-            center_points.append((segment[0] + segment[1]) / 2)
+        center_points = [(segment[0] + segment[1]) / 2 for segment in segments]
+
         
         center_points = np.array(center_points)
         x, y = center_points[:, 0], center_points[:, 1]
-        tck, _ = splprep([x, y], s=1)
+        tck, _ = splprep([x, y], s=3)
 
-        smooth_points = np.linspace(0, 1, len(center_points))
+        smooth_points = np.linspace(0, 1, 100)
         x_smooth, y_smooth = splev(smooth_points, tck)
 
         return np.column_stack((x_smooth, y_smooth))
@@ -298,7 +336,6 @@ class CenterLineNode(Node):
         steeringAngle = np.arctan(2.0 * wheelbase * np.sin(alpha) / lookahead)
         return steeringAngle 
 
-    
     def guessHeading(self):
         position = np.array([100, 25])
         left_distances = np.linalg.norm(self.b_long - position, axis=1)
@@ -316,17 +353,6 @@ class CenterLineNode(Node):
     def update_visualization(self):
         # Clear the axes
         self.ax.clear()
-
-        # Re-plot the occupancy grid
-        # self.im = self.ax.imshow(
-        #     self.occupancy_grid,
-        #     cmap="gray",
-        #     origin="lower",
-        #     extent=[
-        #         0, self.grid_size[0],  # x-axis extent
-        #         0, self.grid_size[1],  # y-axis extent
-        #     ],
-        # )
 
         # Plot the boundaries
         self.ax.plot(self.b_long[:, 0], self.b_long[:, 1], 'r-', label="Long Boundary")
@@ -351,7 +377,8 @@ class CenterLineNode(Node):
             )
 
         # Optional: Add legend
-        self.ax.legend()
+        self.ax.legend(loc='upper left',
+                       bbox_to_anchor=(1.05, 1))
 
         # Update the visualization
         self.im.autoscale()
