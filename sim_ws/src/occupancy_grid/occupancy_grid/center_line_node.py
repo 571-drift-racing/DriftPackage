@@ -2,13 +2,26 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import LaserScan
 
-from scipy.interpolate import interp1d
+from scipy.interpolate import interp1d, splprep, splev
 import numpy as np
 import matplotlib.pyplot as plt  # Import Matplotlib
+
+############## Constants ##############
+wheelbase = .3302 #car length meters
+l_c, l_b = 0.75, 2  # Lookahead Parameters
+
+boundaryDeltaThreshold = 0.8 # Threshold for classifying boundaries
+resampleBoundary_short, resampleBoundary_long = 50, 100
+segmentMaxLength = 54
+############## Constants ##############
+
 
 class CenterLineNode(Node):
     def __init__(self):
         super().__init__('occupancy_grid_node')
+
+        self.heading = None
+        self.curSpeed = 0
 
         # LIDAR subscription
         self.lidar_sub = self.create_subscription(
@@ -49,12 +62,21 @@ class CenterLineNode(Node):
         max_range = msg.range_max
 
         # Filter invalid points
-        valid = (ranges > 0) & (ranges < max_range)
+        valid = (ranges > 0) & (ranges < max_range*0.9)
         x_coords = ranges[valid] * np.cos(angles[valid])
         y_coords = ranges[valid] * np.sin(angles[valid])
 
         x_coords, y_coords = self.update_occupancy_grid(x_coords, y_coords)
         self.update_boundary(x_coords, y_coords)
+        self.centerline = self.calculate_centerline(self.segments)
+
+        steeringAngle = self.pure_pursuit(np.array([100, 25]),
+                                    self.heading,
+                                    self.centerline,
+                                    l_b + self.curSpeed * l_c,
+                                    wheelbase)
+        print(steeringAngle if steeringAngle else 0)
+
         self.update_visualization()
 
     def update_occupancy_grid(self, x_coords, y_coords):
@@ -111,10 +133,12 @@ class CenterLineNode(Node):
         else:
             self.b_long, self.b_short = right_boundary, left_boundary
 
-        self.b_long = self.resample_boundary(self.b_long, 100)
-        self.b_short = self.resample_boundary(self.b_short, 50)
+        self.b_long = self.resample_boundary(self.b_long, resampleBoundary_long)
+        self.b_short = self.resample_boundary(self.b_short, resampleBoundary_short)
 
-        self.segments = self.calculate_segments(self.b_long, self.b_short, 55)
+        self.heading = self.guessHeading()
+
+        self.segments = self.calculate_segments(self.b_long, self.b_short, segmentMaxLength)
 
     def classify_boundaries(self, x_coords, y_coords):
         # Combine x and y coordinates into a single array
@@ -138,7 +162,7 @@ class CenterLineNode(Node):
                     right.append(point)
                     
                 else:
-                    if abs(delta - avg_delta) < 0.8:
+                    if abs(delta - avg_delta) < boundaryDeltaThreshold:
                         right.append(point)
                     else:
                         left.append(point)
@@ -245,6 +269,50 @@ class CenterLineNode(Node):
 
         return normals
 
+    def calculate_centerline(self, segments):
+        center_points = []
+        for segment in segments:
+            center_points.append((segment[0] + segment[1]) / 2)
+        
+        center_points = np.array(center_points)
+        x, y = center_points[:, 0], center_points[:, 1]
+        tck, _ = splprep([x, y], s=1)
+
+        smooth_points = np.linspace(0, 1, len(center_points))
+        x_smooth, y_smooth = splev(smooth_points, tck)
+
+        return np.column_stack((x_smooth, y_smooth))
+
+
+    def pure_pursuit(self, position, heading, centerline, lookahead, wheelbase):
+        distances = np.linalg.norm(centerline - position, axis=1)
+        target_idx = np.argmin(np.abs(distances - lookahead))
+
+        if target_idx < 0 or target_idx >= len(centerline):
+            return 0
+
+        target_point = centerline[target_idx]
+        dx, dy = target_point - position
+        alpha = np.arctan2(dy, dx) - heading
+
+        steeringAngle = np.arctan(2.0 * wheelbase * np.sin(alpha) / lookahead)
+        return steeringAngle 
+
+    
+    def guessHeading(self):
+        position = np.array([100, 25])
+        left_distances = np.linalg.norm(self.b_long - position, axis=1)
+        right_distances = np.linalg.norm(self.b_short - position, axis=1)
+
+        nearest_left = self.b_long[np.argmin(left_distances)]
+        nearest_right = self.b_short[np.argmin(right_distances)]
+
+        tangent = nearest_right - nearest_left
+
+        heading =  np.arctan2(tangent[1], tangent[0])
+        return heading
+
+
     def update_visualization(self):
         # Clear the axes
         self.ax.clear()
@@ -273,6 +341,14 @@ class CenterLineNode(Node):
                     [point_long[1], point_short[1]],
                     'g-'  # Green line for the segment
                 )
+        
+        if hasattr(self, 'centerline'):  # Ensure `centerline` exists
+            self.ax.plot(
+                self.centerline[:, 0],  # x-coordinates of the centerline
+                self.centerline[:, 1],  # y-coordinates of the centerline
+                'c-',  # Cyan line for the centerline
+                label="Centerline"
+            )
 
         # Optional: Add legend
         self.ax.legend()
