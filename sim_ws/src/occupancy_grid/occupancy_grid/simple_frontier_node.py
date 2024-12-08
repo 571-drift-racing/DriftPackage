@@ -33,17 +33,16 @@ class SimpleFrontierNode(Node):
         self.occupancy_grid = np.array(msg.data).reshape((msg.width, msg.height))
         if not self.grid_size:
             self.grid_size = (msg.width, msg.height)
+            self.grid_center = (msg.width // 2, msg.height // 2)
 
-        grid_center = (msg.width // 2, msg.height // 2)
-
-        # self.get_logger().info(f"Grid Center: \n{self.occupancy_grid[grid_center[0]-9:grid_center[0]+10, grid_center[1]-9:grid_center[1]+10]}")
+        # self.get_logger().info(f"Grid Center: \n{self.occupancy_grid[0:5, 0:5]}")
         self.explore_frontiers()
 
 
     def detect_frontiers(self):
         frontiers = []
         avg_x, avg_y = 0 ,0
-        for x in range(1, self.grid_size[0] - 1):
+        for x in range(110, self.grid_size[0] - 1):
             for y in range(1, self.grid_size[1] - 1):
                 if self.occupancy_grid[x, y] == -1:  # Free cell
                     neighbors = self.occupancy_grid[x-1:x+2, y-1:y+2].flatten()
@@ -68,20 +67,20 @@ class SimpleFrontierNode(Node):
             dx = frontier[0] - grid_center[0]
             dy = frontier[1] - grid_center[1]
             distance = math.sqrt(dx**2 + dy**2)
-            if distance < min_distance:
+            if dx> 0 and distance < min_distance:
                 min_distance = distance
                 target_frontier = frontier
-
+                
         return target_frontier
     
     def calculate_motion_command(self, target):
         dx = target[0] - self.grid_center[0]
         dy = target[1] - self.grid_center[1]
-        angle_to_target = math.atan2(dy, dx)
+        angle_to_target = -1 * math.atan2(dy, dx)
 
         drive_msg = AckermannDriveStamped()
         drive_msg.drive.steering_angle = angle_to_target
-        drive_msg.drive.speed = min(5.0, math.sqrt(dx**2 + dy**2) / 10.0)  # Speed capped at 5.0 m/s
+        drive_msg.drive.speed = 3.0
 
         return drive_msg
     
@@ -115,17 +114,23 @@ class SimpleFrontierNode(Node):
 
         target_frontier = self.select_closest_frontier(frontiers)
 
-        if target_frontier:
-            drive_msg = self.calculate_motion_command(target_frontier)
+        print(target_frontier)
+        drive_msg = self.calculate_motion_command(target_frontier)
+        self.cmdDrive_pub.publish(drive_msg)
 
-            if self.is_path_clear(drive_msg):
-                self.cmdDrive_pub.publish(drive_msg)
-                self.get_logger().info(f"Driving to frontier at {target_frontier}")
-            else:
-                self.get_logger().warn("Path blocked! Re-evaluating frontiers.")
-                self.stop_robot()
-        else:
-            self.get_logger().warn("No valid target frontier found.")
+
+        # if target_frontier:
+        #     drive_msg = self.calculate_motion_command(target_frontier)
+
+        #     self.get_logger().info("Starting PathClear()")
+        #     if self.is_path_clear(drive_msg):
+        #         self.cmdDrive_pub.publish(drive_msg)
+        #         self.get_logger().info(f"Driving to frontier at {target_frontier}")
+        #     else:
+        #         self.get_logger().warn("Path blocked! Re-evaluating frontiers.")
+        #         self.stop_robot()
+        # else:
+        #     self.get_logger().warn("No valid target frontier found.")
 
 def main(args=None):
     rclpy.init(args=args)

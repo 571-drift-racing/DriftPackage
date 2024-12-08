@@ -4,9 +4,8 @@ from sensor_msgs.msg import LaserScan
 from std_msgs.msg import Header
 from racecar_interfaces.msg import OccupancyGrid
 
-import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation
 import numpy as np
+import matplotlib.pyplot as plt  # Import Matplotlib
 
 class OccupancyGridNode(Node):
     def __init__(self):
@@ -21,31 +20,30 @@ class OccupancyGridNode(Node):
         )
 
         # Occupancy grid parameters
-        self.grid_resolution = 0.1
+        self.grid_resolution = 0.05
         self.grid_size = (200, 200)
-        self.grid_center = (self.grid_size[0] // 2, self.grid_size[1] // 2)
+        self.grid_center = (25, 100) # Y, X
 
         # 0: unknown, 1: occupied, -1: free
         self.occupancy_grid = np.zeros(self.grid_size, dtype=np.int8)
         
-        # Frontier tracking
-        self.frontiers = []
+        # Visualization setup
+        self.fig, self.ax = plt.subplots()
+        self.im = self.ax.imshow(
+            self.occupancy_grid,
+            cmap="gray",
+            origin="lower",
+            extent=[
+                0, self.grid_size[0],  # x-axis extent
+                0, self.grid_size[1],  # y-axis extent
+            ],
+        )
+        plt.ion()
+        plt.show()
 
+        # Publisher setup
         self.publisher_ = self.create_publisher(OccupancyGrid, '/occupancy_grid', 10)
         self.timer = self.create_timer(0.1, self.timer_callback)
-
-
-        self.fig, self.ax = plt.subplots()
-        self.img = self.ax.imshow(
-            self.occupancy_grid,
-            cmap='gray',
-            origin='lower'
-        )
-        self.ax.set_title("Occupancy Grid")
-        self.ax.set_xlabel("X (meters)")
-        self.ax.set_ylabel("Y (meters)")
-        plt.ion()  # Enable interactive mode
-        plt.show()
 
         self.get_logger().info("Occupancy Grid Node Initialized")
 
@@ -66,27 +64,22 @@ class OccupancyGridNode(Node):
         # Publish the message
         self.publisher_.publish(msg)
 
+        # Update the visualization
+        self.update_visualization()
+
     def lidar_callback(self, msg: LaserScan):
         ranges = np.array(msg.ranges)
-        # self.get_logger().info(f"LIDAR Ranges: {ranges[:10]}")
 
-        angles = np.pi/2 + msg.angle_min + np.arange(len(ranges)) * msg.angle_increment
+        angles = -1 * (msg.angle_min + np.arange(len(ranges)) * msg.angle_increment)
         max_range = msg.range_max
 
         # Filter invalid points
-        valid = (ranges > 0)
+        valid = (ranges > 0) & (ranges < max_range)
         x_coords = ranges[valid] * np.cos(angles[valid])
         y_coords = ranges[valid] * np.sin(angles[valid])
 
         # Update the grid
         self.update_occupancy_grid(x_coords, y_coords)
-        self.update_visualization()
-
-        # Detect frontiers
-        # self.frontiers = self.detect_frontiers()
-
-
-        # self.update_visualization()
 
     def update_occupancy_grid(self, x_coords, y_coords):
         self.occupancy_grid = np.zeros(self.grid_size, dtype=np.int8)
@@ -105,12 +98,13 @@ class OccupancyGridNode(Node):
         # Mark occupied cells
         self.occupancy_grid[x_cells, y_cells] = 1
 
-        # Debug: Check a subset of the grid
-        # self.get_logger().info(f"Grid Center: \n{self.occupancy_grid[self.grid_center[0]-9:self.grid_center[0]+10, self.grid_center[1]-9:self.grid_center[1]+10]}")
-
+    def update_visualization(self):
+        self.im.set_data(self.occupancy_grid)
+        self.im.autoscale()
+        plt.draw()
+        plt.pause(0.01)
 
     def bresenham_line(self, x0, y0, x1, y1):
-        # Bresenham's line algorithm for grid traversal
         line = []
         dx = abs(x1 - x0)
         dy = abs(y1 - y0)
@@ -131,27 +125,16 @@ class OccupancyGridNode(Node):
                 y0 += sy
         return line
 
-
-    def update_visualization(self):
-        # Update the image data in the plot
-        self.img.set_data(self.occupancy_grid)
-        plt.draw()
-        plt.pause(0.001)  # Small pause for rendering
-
-
 def main(args=None):
     rclpy.init(args=args)
     occupancy_grid_node = OccupancyGridNode()
 
     try:
-        # plt.show(block=False)  # Non-blocking Matplotlib visualization
         rclpy.spin(occupancy_grid_node)
     except KeyboardInterrupt:
         occupancy_grid_node.get_logger().info("Shutting down node.")
     finally:
-        # plt.close()
         rclpy.shutdown()
-
 
 if __name__ == '__main__':
     main()

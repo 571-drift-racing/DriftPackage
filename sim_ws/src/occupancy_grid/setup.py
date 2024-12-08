@@ -23,7 +23,8 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'occupancy_grid_node = occupancy_grid.occupancy_grid_node:main'
+            'occupancy_grid_node = occupancy_grid.occupancy_grid_node:main',
+            'simple_frontier_node = occupancy_grid.simple_frontier_node:main'
         ],
     },
 )
