@@ -114,6 +114,8 @@ class CenterLineNode(Node):
         self.b_long = self.resample_boundary(self.b_long, 100)
         self.b_short = self.resample_boundary(self.b_short, 50)
 
+        self.segments = self.calculate_segments(self.b_long, self.b_short, 55)
+
     def classify_boundaries(self, x_coords, y_coords):
         # Combine x and y coordinates into a single array
         points = np.column_stack((x_coords, y_coords))
@@ -156,6 +158,93 @@ class CenterLineNode(Node):
         new_distances = np.linspace(0, distances[-1], points)
         return interp_func(new_distances)
 
+    def calculate_segments(self, b_long, b_short, w_max):
+        """
+        Calculate segments based on b_long and b_short boundaries.
+        
+        Args:
+            b_long (np.ndarray): Resampled long boundary (N x 2).
+            b_short (np.ndarray): Resampled short boundary (M x 2).
+            w_max (float): Maximum allowed track width for matching.
+        
+        Returns:
+            segments (list): List of matched and projected segments.
+        """
+        segments = []
+        n_long = len(b_long)
+        
+        for i in range(n_long):
+            # Step 1: Compute distances from b_long[i] to all points in b_short
+            distances = np.linalg.norm(b_short - b_long[i], axis=1)
+            k_i = np.argmin(distances)  # Find the nearest point in b_short
+            min_distance = distances[k_i]
+
+            if min_distance < w_max:
+                # Step 2: Match point if within track width
+                segments.append([b_long[i], b_short[k_i]])
+            else:
+                # Step 3: Project remaining long boundary
+                remaining_b_long = b_long[i:]
+                
+                if len(segments) > 0:
+                    matched_distances = [np.linalg.norm(s[0] - s[1]) for s in segments]
+                    avg_width = np.mean(matched_distances)
+                else:
+                    avg_width = w_max
+
+                # Calculate normals for projection
+                normals = self.calculate_normals(remaining_b_long)
+
+                # Append projected segment to the list
+                for j, point in enumerate(remaining_b_long):
+                    projected_point = point + normals[j] * avg_width
+                    if np.linalg.norm(projected_point - point) <= 1.5 * w_max:  # Keep projection within bounds
+                        segments.append([point, projected_point])
+                    
+                break  # End loop after projecting the remaining section
+
+        return segments
+    
+    def calculate_normals(self, points):
+        """
+        Calculate approximate normals for a set of points.
+        
+        Args:
+            points (np.ndarray): Array of points (N x 2).
+        
+        Returns:
+            np.ndarray: Array of normal vectors (N x 2).
+        """
+        if len(points) < 2:
+            raise ValueError("At least two points are required to calculate normals.")
+        
+        normals = []
+        n = len(points)
+
+        for i in range(n):
+            if i == 0:  # First point
+                tangent = points[i + 1] - points[i]
+            elif i == n - 1:  # Last point
+                tangent = points[i] - points[i - 1]
+            else:  # Interior points
+                tangent = points[i + 1] - points[i - 1]
+
+            # Normalize the tangent vector
+            norm = np.linalg.norm(tangent)
+            if norm > 0:
+                tangent /= norm
+                # Rotate tangent vector 90 degrees to get the normal
+                normal = np.array([-tangent[1], tangent[0]])
+            else:
+                normal = np.array([0, 0])  # Default normal if tangent is degenerate
+
+            normals.append(normal)
+
+        # Convert normals to numpy array
+        normals = np.array(normals)
+
+        return normals
+
     def update_visualization(self):
         # Clear the axes
         self.ax.clear()
@@ -174,6 +263,16 @@ class CenterLineNode(Node):
         # Plot the boundaries
         self.ax.plot(self.b_long[:, 0], self.b_long[:, 1], 'r-', label="Long Boundary")
         self.ax.plot(self.b_short[:, 0], self.b_short[:, 1], 'b-', label="Short Boundary")
+
+        if hasattr(self, 'segments'):  # Ensure `segments` exists
+            for segment in self.segments:
+                # Each segment contains two points: [point_long, point_short]
+                point_long, point_short = segment
+                self.ax.plot(
+                    [point_long[0], point_short[0]],
+                    [point_long[1], point_short[1]],
+                    'g-'  # Green line for the segment
+                )
 
         # Optional: Add legend
         self.ax.legend()
