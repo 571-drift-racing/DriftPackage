@@ -24,7 +24,8 @@ setup(
     entry_points={
         'console_scripts': [
             'occupancy_grid_node = occupancy_grid.occupancy_grid_node:main',
-            'simple_frontier_node = occupancy_grid.simple_frontier_node:main'
+            'simple_frontier_node = occupancy_grid.simple_frontier_node:main',
+            'center_line_node = occupancy_grid.center_line_node:main'
         ],
     },
 )
