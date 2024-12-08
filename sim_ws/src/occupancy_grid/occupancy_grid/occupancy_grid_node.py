@@ -22,7 +22,7 @@ class OccupancyGridNode(Node):
         # Occupancy grid parameters
         self.grid_resolution = 0.05
         self.grid_size = (200, 200)
-        self.grid_center = (25, 100) # Y, X
+        self.grid_center = (100, 25)
 
         # 0: unknown, 1: occupied, -1: free
         self.occupancy_grid = np.zeros(self.grid_size, dtype=np.int8)
@@ -70,7 +70,7 @@ class OccupancyGridNode(Node):
     def lidar_callback(self, msg: LaserScan):
         ranges = np.array(msg.ranges)
 
-        angles = -1 * (msg.angle_min + np.arange(len(ranges)) * msg.angle_increment)
+        angles = np.pi/2 + (msg.angle_min + np.arange(len(ranges)) * msg.angle_increment)
         max_range = msg.range_max
 
         # Filter invalid points
@@ -92,11 +92,11 @@ class OccupancyGridNode(Node):
         # Mark free space
         for x, y in zip(x_cells, y_cells):
             for lx, ly in self.bresenham_line(self.grid_center[0], self.grid_center[1], x, y):
-                if self.occupancy_grid[lx, ly] == 0:  # Only update unknown cells to free
-                    self.occupancy_grid[lx, ly] = -1  # Free space
+                if self.occupancy_grid[ly, lx] == 0:  # Only update unknown cells to free
+                    self.occupancy_grid[ly, lx] = -1  # Free space
 
         # Mark occupied cells
-        self.occupancy_grid[x_cells, y_cells] = 1
+        self.occupancy_grid[y_cells, x_cells] = 1
 
     def update_visualization(self):
         self.im.set_data(self.occupancy_grid)

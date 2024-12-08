@@ -14,7 +14,7 @@ setup(
         ('share/' + package_name, ['package.xml']),
         ('share/' + package_name + '/msg', glob('msg/*.msg')),
     ],
-    install_requires=['setuptools'],
+    install_requires=['setuptools', 'numpy', 'matplotlib', 'scikit-learn'],
     zip_safe=True,
     maintainer='didikid',
     maintainer_email='didikid3@gmail.com',
