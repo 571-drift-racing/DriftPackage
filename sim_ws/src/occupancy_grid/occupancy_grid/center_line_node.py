@@ -15,7 +15,7 @@ l_c, l_b = 0.75, 2  # Lookahead Parameters
 
 boundaryDeltaThreshold = 0.8 # Threshold for classifying boundaries
 resampleBoundary_short, resampleBoundary_long = 50, 100
-segmentMaxLength = 45
+segmentMaxLength = 50
 ############## Constants ##############
 
 DEBUG = False
@@ -26,7 +26,8 @@ class CenterLineNode(Node):
 
         self.heading = None
         self.curSpeed = 0
-        self.processingSignal = False
+        self.processingSignal = True
+        self.isLeftLong = None
 
 
         # LIDAR subscription
@@ -43,11 +44,6 @@ class CenterLineNode(Node):
             self.curveAlert_callback,
             10
         )
-
-        self.cmdDrive_pub = self.create_publisher(
-            AckermannDriveStamped,
-            '/drive', 
-            500)
 
         # Occupancy grid parameters
         self.grid_resolution = 0.05
@@ -94,7 +90,6 @@ class CenterLineNode(Node):
         x_coords, y_coords = self.update_occupancy_grid(x_coords, y_coords)
 
         if self.processingSignal:
-            self.get_logger().info("Processing Boundary and Segments ...")
             self.update_boundary(x_coords, y_coords)
 
             try:
@@ -104,32 +99,6 @@ class CenterLineNode(Node):
 
             self.centerline = self.calculate_centerline(self.segments)
 
-            steeringAngle = self.pure_pursuit(np.array([100, 25]),
-                                        self.heading,
-                                        self.centerline,
-                                        l_b + self.curSpeed * l_c,
-                                        wheelbase)
-            
-            steeringAngle = steeringAngle if not math.isnan(steeringAngle) else 0.0
-
-        # Put something to handle within and beyond friction limits
-        # stA = abs(steeringAngle)
-        # if stA < np.pi/6:
-        #     self.curSpeed = 8.0
-        # elif stA < np.pi/4:
-        #     self.curSpeed = 6.0
-        # elif stA < np.pi/3:
-        #     self.curSpeed = 4.0
-        # else:
-        #     self.curSpeed = 2.0
-
-        # print(self.curSpeed, steeringAngle)
-
-        # driveMsg = AckermannDriveStamped()
-        # driveMsg.drive.steering_angle = steeringAngle
-        # driveMsg.drive.speed = self.curSpeed
-        # self.cmdDrive_pub.publish(driveMsg)
-        
         if DEBUG:
             self.update_visualization()
 
@@ -151,10 +120,14 @@ class CenterLineNode(Node):
         left_length = np.sum(np.sqrt(np.sum(np.diff(left_boundary, axis=0)**2, axis=1)))
         right_length = np.sum(np.sqrt(np.sum(np.diff(right_boundary, axis=0)**2, axis=1)))
 
+
         if left_length > right_length:
             self.b_long, self.b_short = left_boundary, right_boundary
+            self.isLeftLong = True
+            self.b_long = self.b_long[::-1]
         else:
             self.b_long, self.b_short = right_boundary, left_boundary
+            self.isLeftLong = False
 
         self.b_long = self.resample_boundary(self.b_long, resampleBoundary_long)
         self.b_short = self.resample_boundary(self.b_short, resampleBoundary_short)
@@ -207,31 +180,22 @@ class CenterLineNode(Node):
         return interp_func(new_distances)
 
     def calculate_segments(self, b_long, b_short, w_max):
-        """
-        Calculate segments based on b_long and b_short boundaries.
-        
-        Args:
-            b_long (np.ndarray): Resampled long boundary (N x 2).
-            b_short (np.ndarray): Resampled short boundary (M x 2).
-            w_max (float): Maximum allowed track width for matching.
-        
-        Returns:
-            segments (list): List of matched and projected segments.
-        """
         segments = []
-        n_long = len(b_long)
-        
-        for i in range(n_long):
-            # Step 1: Compute distances from b_long[i] to all points in b_short
-            distances = np.linalg.norm(b_short - b_long[i], axis=1)
-            k_i = np.argmin(distances)  # Find the nearest point in b_short
-            min_distance = distances[k_i]
+        used_short_indices = set()
+        len_long = len(b_long)
 
-            if min_distance < w_max:
-                # Step 2: Match point if within track width
-                segments.append([b_long[i], b_short[k_i]])
+        for i in range(len_long):
+            distances = np.linalg.norm(b_short - b_long[i], axis=1)
+            nearest_idx = np.argmin(distances)
+
+            if nearest_idx in used_short_indices:
+                continue
+
+            if distances[nearest_idx] < w_max:
+                segments.append([b_long[i], b_short[nearest_idx]])
+                if b_short[nearest_idx][1] < 80:
+                    used_short_indices.add(nearest_idx)
             else:
-                # Step 3: Project remaining long boundary
                 remaining_b_long = b_long[i:]
                 
                 if len(segments) > 0:
@@ -245,8 +209,8 @@ class CenterLineNode(Node):
 
                 # Append projected segment to the list
                 for j, point in enumerate(remaining_b_long):
-                    projected_point = point + normals[j] * avg_width
-                    if np.linalg.norm(projected_point - point) <= 1.25 * w_max:  # Keep projection within bounds
+                    if point[1] > 25:
+                        projected_point = point + normals[j] * avg_width
                         segments.append([point, projected_point])
                     
                 break  # End loop after projecting the remaining section
@@ -297,7 +261,10 @@ class CenterLineNode(Node):
             if norm > 0:
                 tangent /= norm
                 # Rotate tangent vector 90 degrees to get the normal
-                normal = np.array([-tangent[1], tangent[0]])
+                if self.isLeftLong:
+                    normal = np.array([tangent[1], -tangent[0]])
+                else:
+                    normal = np.array([-tangent[1], tangent[0]])
             else:
                 normal = np.array([0, 0])  # Default normal if tangent is degenerate
 
@@ -322,20 +289,6 @@ class CenterLineNode(Node):
         return np.column_stack((x_smooth, y_smooth))
 
 
-    def pure_pursuit(self, position, heading, centerline, lookahead, wheelbase):
-        distances = np.linalg.norm(centerline - position, axis=1)
-        target_idx = np.argmin(np.abs(distances - lookahead))
-
-        if target_idx < 0 or target_idx >= len(centerline):
-            return 0
-
-        target_point = centerline[target_idx]
-        dx, dy = target_point - position
-        alpha = np.arctan2(dy, dx) - heading
-
-        steeringAngle = np.arctan(2.0 * wheelbase * np.sin(alpha) / lookahead)
-        return steeringAngle 
-
     def guessHeading(self):
         position = np.array([100, 25])
         left_distances = np.linalg.norm(self.b_long - position, axis=1)
@@ -358,7 +311,7 @@ class CenterLineNode(Node):
         self.ax.plot(self.b_long[:, 0], self.b_long[:, 1], 'r-', label="Long Boundary")
         self.ax.plot(self.b_short[:, 0], self.b_short[:, 1], 'b-', label="Short Boundary")
 
-        if hasattr(self, 'segments'):  # Ensure `segments` exists
+        if hasattr(self, 'segments'):  # Ensure segments exists
             for segment in self.segments:
                 # Each segment contains two points: [point_long, point_short]
                 point_long, point_short = segment
@@ -368,7 +321,7 @@ class CenterLineNode(Node):
                     'g-'  # Green line for the segment
                 )
         
-        if hasattr(self, 'centerline'):  # Ensure `centerline` exists
+        if hasattr(self, 'centerline'):  # Ensure centerline exists
             self.ax.plot(
                 self.centerline[:, 0],  # x-coordinates of the centerline
                 self.centerline[:, 1],  # y-coordinates of the centerline
@@ -398,4 +351,4 @@ def main(args=None):
         rclpy.shutdown()
 
 if __name__ == '__main__':
-    main()
+    main() 

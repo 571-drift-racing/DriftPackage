@@ -113,7 +113,7 @@ class SimpleFrontierNode(Node):
 
         drive_msg = AckermannDriveStamped()
         drive_msg.drive.steering_angle = scaled_steering_angle
-        drive_msg.drive.speed = min(5.0, math.sqrt(dx**2 + dy**2) / 10.0) 
+        drive_msg.drive.speed = 3.0 
         return drive_msg
 
     
