@@ -28,6 +28,7 @@ setup(
             'simple_frontier_node = occupancy_grid.simple_frontier_node:main',
             'center_line_node = occupancy_grid.center_line_node:main',
             'pure_pursuit_node = occupancy_grid.pure_pursuit_node:main',
+            'drift_control_node = occupancy_grid.drift_control_node:main',
         ],
     },
 )

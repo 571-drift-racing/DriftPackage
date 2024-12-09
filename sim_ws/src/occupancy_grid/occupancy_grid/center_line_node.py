@@ -97,8 +97,9 @@ class CenterLineNode(Node):
         msg.frontier_point.x = frontierPoint[0]
         msg.frontier_point.y = frontierPoint[1]
         msg.heading = self.heading
-        msg.speed = self.odom_speed
-        msg.angle = self.odom_angle
+
+        msg.speed = self.odom_speed if self.odom_speed is not None else None
+        msg.angle = self.odom_angle if self.odom_angle is not None else None
         msg.angular_velocity = self.angularVelocity
 
         self.driftData_pub.publish(msg)
