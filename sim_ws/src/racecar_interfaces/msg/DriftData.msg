@@ -1,0 +1,4 @@
+geometry_msgs/Point middle_point
+geometry_msgs/Point frontier_point
+float64 heading
+float64 angularVelocity

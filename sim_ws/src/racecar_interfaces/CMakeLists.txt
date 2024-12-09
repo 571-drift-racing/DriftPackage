@@ -22,8 +22,9 @@ find_package(std_msgs REQUIRED)
 
 
 rosidl_generate_interfaces(${PROJECT_NAME}
-  "msg/OccupancyGrid.msg"
-  DEPENDENCIES std_msgs
+  "msg/OccupancyGrid.msg",
+  "msg/DriftData.msg"
+  DEPENDENCIES std_msgs geometry_msgs
 )
 
 
