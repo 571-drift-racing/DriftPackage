@@ -1,13 +1,13 @@
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import LaserScan
-from ackermann_msgs.msg import AckermannDriveStamped
-from std_msgs.msg import Bool
+from geometry_msgs.msg import Point
+from racecar_interfaces.msg import DriftData, CenterLine
 
 from scipy.interpolate import interp1d, splprep, splev
 import numpy as np
 import matplotlib.pyplot as plt  # Import Matplotlib
-import math
+import time
 
 ############## Constants ##############
 wheelbase = .3302 #car length meters
@@ -26,8 +26,10 @@ class CenterLineNode(Node):
 
         self.heading = None
         self.curSpeed = 0
-        self.processingSignal = True
         self.isLeftLong = None
+
+        self.prevTime = None
+        self.prevHeading = None
 
 
         # LIDAR subscription
@@ -38,10 +40,14 @@ class CenterLineNode(Node):
             40
         )
 
-        self.control_sub = self.create_subscription(
-            Bool,
-            '/curve_alert',
-            self.curveAlert_callback,
+        self.driftData_pub = self.create_publisher(
+            DriftData,
+            '/drift_data',
+            10
+        )
+        self.centerLine_pub = self.create_publisher(
+            CenterLine,
+            '/center_line',
             10
         )
 
@@ -71,10 +77,31 @@ class CenterLineNode(Node):
         self.get_logger().info("Occupancy Grid Node Initialized")
 
 
-    def curveAlert_callback(self, msg: Bool):
-        if msg.data != self.processingSignal:
-            self.get_logger().info(f"New Processing Signal Received!! {msg.data}")
-        self.processingSignal = msg.data
+    def publishDrift(self):
+        if self.centerline is None:
+            return
+
+        middlePoint = self.centerline[len(self.centerline)//2]
+        frontierPoint = self.centerline[-3]
+
+        msg = DriftData()
+        msg.middlePoint.x = middlePoint[0]
+        msg.middlePoint.y = middlePoint[1]
+        msg.frontierPoint.x = frontierPoint[0]
+        msg.frontierPoint.y = frontierPoint[1]
+        msg.heading = self.heading
+        msg.angularVelocity = self.angularVelocity
+
+        self.driftData_pub.publish(msg)
+
+    def publishCenterLine(self):
+        if self.centerline is None:
+            return
+        msg = CenterLine()
+        for point in self.centerline:
+            msg.points.append(Point(x=point[0], y=point[1]))
+
+        self.centerLine_pub.publish(msg)
 
     def lidar_callback(self, msg: LaserScan):
         ranges = np.array(msg.ranges)
@@ -88,19 +115,35 @@ class CenterLineNode(Node):
         y_coords = ranges[valid] * np.sin(angles[valid])
 
         x_coords, y_coords = self.update_occupancy_grid(x_coords, y_coords)
+        self.update_boundary(x_coords, y_coords)
+        try:
+            self.segments
+        except:
+            return
 
-        if self.processingSignal:
-            self.update_boundary(x_coords, y_coords)
-
-            try:
-                self.segments
-            except:
-                return
-
-            self.centerline = self.calculate_centerline(self.segments)
+        self.centerline = self.calculate_centerline(self.segments)
+        self.calculateAngularVelocity()
+        self.publishDrift()
+        self.publishCenterLine()
 
         if DEBUG:
             self.update_visualization()
+
+    def calculateAngularVelocity(self):
+        currentTime = time.time()
+        if self.prevHeading is None or self.prevTime is None:
+            self.prevHeading = self.heading
+            self.prevTime = currentTime
+            self.angularVelocity = 0
+
+        delta_heading = self.heading - self.prevHeading
+        delta_time = currentTime - self.prevTime
+
+        delta_heading = (delta_heading + np.pi) % (2 * np.pi) - np.pi
+        self.angularVelocity = delta_heading / delta_time
+
+        self.prevHeading = self.heading
+        self.prevTime = currentTime
 
     def update_occupancy_grid(self, x_coords, y_coords):
         self.occupancy_grid = np.zeros(self.grid_size, dtype=np.int8)
