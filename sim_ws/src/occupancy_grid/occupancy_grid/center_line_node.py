@@ -1,6 +1,7 @@
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import LaserScan
+from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Point
 from racecar_interfaces.msg import DriftData, CenterLine
 
@@ -38,6 +39,12 @@ class CenterLineNode(Node):
             '/scan',
             self.lidar_callback,
             40
+        )
+        self.odom_sub = self.create_subscription(
+            Odometry,
+            '/ego_racecar/odom',
+            self.odom_callback,
+            10
         )
 
         self.driftData_pub = self.create_publisher(
@@ -90,6 +97,8 @@ class CenterLineNode(Node):
         msg.frontier_point.x = frontierPoint[0]
         msg.frontier_point.y = frontierPoint[1]
         msg.heading = self.heading
+        msg.speed = self.odom_speed
+        msg.angle = self.odom_angle
         msg.angular_velocity = self.angularVelocity
 
         self.driftData_pub.publish(msg)
@@ -102,6 +111,16 @@ class CenterLineNode(Node):
             msg.points.append(Point(x=point[0], y=point[1]))
 
         self.centerLine_pub.publish(msg)
+
+    def odom_callback(self, msg: Odometry):
+        linearX = msg.twist.twist.linear.x
+        linearY = msg.twist.twist.linear.y
+        
+
+        self.odom_speed = np.sqrt(linearX**2 + linearY**2)
+        self.odom_angle = np.arctan2(linearY, linearX)
+        self.odom_angularZ = msg.twist.twist.angular.z
+
 
     def lidar_callback(self, msg: LaserScan):
         ranges = np.array(msg.ranges)
