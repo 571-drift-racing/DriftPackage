@@ -85,12 +85,12 @@ class CenterLineNode(Node):
         frontierPoint = self.centerline[-3]
 
         msg = DriftData()
-        msg.middlePoint.x = middlePoint[0]
-        msg.middlePoint.y = middlePoint[1]
-        msg.frontierPoint.x = frontierPoint[0]
-        msg.frontierPoint.y = frontierPoint[1]
+        msg.middle_point.x = middlePoint[0]
+        msg.middle_point.y = middlePoint[1]
+        msg.frontier_point.x = frontierPoint[0]
+        msg.frontier_point.y = frontierPoint[1]
         msg.heading = self.heading
-        msg.angularVelocity = self.angularVelocity
+        msg.angular_velocity = self.angularVelocity
 
         self.driftData_pub.publish(msg)
 
