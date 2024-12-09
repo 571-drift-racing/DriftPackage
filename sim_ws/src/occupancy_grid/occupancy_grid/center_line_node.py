@@ -32,6 +32,9 @@ class CenterLineNode(Node):
         self.prevTime = None
         self.prevHeading = None
 
+        self.odom_angle = None
+        self.odom_speed = None
+        self.odom_angularZ = None
 
         # LIDAR subscription
         self.lidar_sub = self.create_subscription(
