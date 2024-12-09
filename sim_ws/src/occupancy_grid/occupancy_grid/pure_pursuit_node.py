@@ -2,13 +2,12 @@ import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Point
 from ackermann_msgs.msg import AckermannDriveStamped
-from racecar_interfaces.msg import Centerline
+from racecar_interfaces.msg import CenterLine
 import numpy as np
-import math
 
 # Constants
 WHEELBASE = 0.3302  # Car length in meters
-LOOKAHEAD_DISTANCE = 2.0  # Default lookahead distance in meters
+
 
 class PurePursuitNode(Node):
     def __init__(self):
@@ -18,11 +17,12 @@ class PurePursuitNode(Node):
         self.centerline = None
         self.position = np.array([100, 25])  # Current position (fixed for now)
         self.heading = 0.0  # Current heading (in radians)
+        self.LOOKAHEAD_DISTANCE = 10.0  # Default lookahead distance in meters
 
         # Subscribers
         self.centerline_sub = self.create_subscription(
-            Centerline,
-            '/centerline_data',
+            CenterLine,
+            '/center_line',
             self.centerline_callback,
             10
         )
@@ -54,7 +54,7 @@ class PurePursuitNode(Node):
 
         # Calculate the target point
         distances = np.linalg.norm(self.centerline - self.position, axis=1)
-        target_idx = np.argmin(np.abs(distances - LOOKAHEAD_DISTANCE))
+        target_idx = np.argmin(np.abs(distances - self.LOOKAHEAD_DISTANCE))
 
         if target_idx < 0 or target_idx >= len(self.centerline):
             self.get_logger().warn("No valid target point found; skipping pure pursuit!")
@@ -69,12 +69,14 @@ class PurePursuitNode(Node):
         # Normalize alpha to be within [-pi, pi]
         alpha = (alpha + np.pi) % (2 * np.pi) - np.pi
 
-        steering_angle = np.arctan(2.0 * WHEELBASE * np.sin(alpha) / LOOKAHEAD_DISTANCE)
+        steering_angle = np.arctan(WHEELBASE * np.sin(alpha) / self.LOOKAHEAD_DISTANCE)
+        speed = self.calculate_speed(steering_angle)
+        self.LOOKAHEAD_DISTANCE = 10 + 2 * speed
 
         # Publish the drive message
         drive_msg = AckermannDriveStamped()
         drive_msg.drive.steering_angle = steering_angle
-        drive_msg.drive.speed = self.calculate_speed(steering_angle)
+        drive_msg.drive.speed = speed
         self.drive_pub.publish(drive_msg)
 
         self.get_logger().info(f"Steering Angle: {steering_angle:.3f}, Speed: {drive_msg.drive.speed:.2f}")
@@ -84,11 +86,11 @@ class PurePursuitNode(Node):
         Calculate speed based on the steering angle.
         """
         abs_steering_angle = abs(steering_angle)
-        if abs_steering_angle < np.pi / 6:
+        if abs_steering_angle < np.pi / 36:
             return 8.0  # High speed for straight paths
-        elif abs_steering_angle < np.pi / 4:
-            return 6.0
-        elif abs_steering_angle < np.pi / 3:
+        elif abs_steering_angle < np.pi / 20:
+            return 5.0
+        elif abs_steering_angle < np.pi / 18:
             return 4.0
         else:
             return 2.0  # Low speed for sharp turns
