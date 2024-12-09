@@ -1,6 +1,6 @@
 geometry_msgs/Point middle_point
 geometry_msgs/Point frontier_point
-float64 curSpeed
+float64 cur_speed
 float64 angle
 float64 heading
 float64 angular_velocity
